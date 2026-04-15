@@ -1,5 +1,6 @@
 #Document对象和chunking区分
 import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from langchain_community.document_loaders import DirectoryLoader,TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 #TextLoader:读取单个文件，提取文字返回document
@@ -34,8 +35,8 @@ def load_documents():
 
 def split_documents(docs):#切分文件,长文件切成一个个小块（chunks），避免长文本导致的幻觉
     text_splitter=RecursiveCharacterTextSplitter(#这是一个文本切割器工具
-        chunk_size=500,#每块500个字符
-        chunk_overlap=50,#块与块之间的重叠部分为50个字符，保证了语义的连贯性
+        chunk_size=1500,#每块1500个字符,修改是因为语义逻辑太弱
+        chunk_overlap=300,#块与块之间的重叠部分为300个字符，保证了语义的连贯性
         add_start_index=True#记住每块在原文中的起始位置,比如说第1块的起始位置是0，第2块的起始位置就是450
     )
     chunks=text_splitter.split_documents(docs)
@@ -52,9 +53,18 @@ def save_to_chroma(chunks):
     )
     """
     #调用LLM聊天模型来向量化吗，神了
+    
+    """
     embeddings=HuggingFaceEmbeddings(
         #使用本地免费模型进行向量化
         model_name="all-MiniLM-L6-v2"#这是一个很好的模型
+    )
+    """
+    #就算好，还是太弱了，看着库里的资料都不知道这是我要找的东西
+
+    embeddings=HuggingFaceEmbeddings(
+        model_name="BAAI/bge-small-zh-v1.5",
+        model_kwargs={'device': 'cpu'} 
     )
 
 

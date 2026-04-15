@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 load_dotenv()
 
 #加载数据库
-embeddings=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+embeddings=HuggingFaceEmbeddings(model_name="BAAI/bge-small-zh-v1.5",model_kwargs={'device': 'cpu'} )
 db=Chroma(persist_directory="chroma_db",embedding_function=embeddings)#问题本身也需要被转化为向量，这个转化过程用到的模型一致
 
 #接入deepseek
@@ -32,11 +32,11 @@ template="""
 
 prompt_template = ChatPromptTemplate.from_template(template)
 
-query = "Dijkstra 算法的时间复杂度是多少？"
+query = "dijkstra的时间复杂度是多少"
 
 print(f"\n> 正在本地数据库中搜寻关于 '{query}' 的资料...")
 # 检索最相关的 3 个片段
-docs = db.similarity_search(query, k=3)
+docs = db.similarity_search(query, k=10)#这涉及到一个检索精度，如果精度太小，可能查不到要问的问题的参考文件
 context_text = "\n\n---\n\n".join([doc.page_content for doc in docs])#这是给ai看的，ai看不懂python给的列表，必须是纯字符；join是把这三个文本使用\n---\n连接起来
 
 print("> 资料已找到，正在请 DeepSeek 教练总结并回答...\n")
