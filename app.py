@@ -28,7 +28,17 @@ load_dotenv()
 @st.cache_resource#装饰器模型只在第一次启动时加载到内存
 def init_resource():
     embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-zh-v1.5",model_kwargs={'device': 'cpu'})
-    db = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+    # 修改 db 的加载方式，加入配置关掉遥测
+    import chromadb
+    from chromadb.config import Settings
+    
+    client_settings = Settings(is_telemetry_enabled=False) # 关掉遥测
+    
+    db = Chroma(
+        persist_directory="chroma_db", 
+        embedding_function=embeddings,
+        client_settings=client_settings # 传入配置
+    )
     llm = ChatOpenAI(
         model='deepseek-chat', 
         openai_api_key=os.getenv("DEEPSEEK_API_KEY"), 
