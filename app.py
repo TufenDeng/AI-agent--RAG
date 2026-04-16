@@ -7,10 +7,12 @@ try:
     import sys
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 except ImportError:
-    pass 
+    pass
 
 import streamlit as st#缩写
 import os
+# 强制禁用 ChromaDB 的遥测系统，防止它调用出问题的库
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
