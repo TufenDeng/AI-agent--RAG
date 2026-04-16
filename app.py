@@ -1,6 +1,11 @@
 #使用streamlit写一个网页，用来与算法助理交互
 #目前全球最火的、专为 机器学习和 AI 开发者 准备的开源 Web 应用框架
 
+#为了使app能在云端运行
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 import streamlit as st#缩写
 import os
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
