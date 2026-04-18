@@ -9,7 +9,7 @@ try:
 except ImportError:
     pass
 
-import streamlit as st#缩写
+import streamlit as st#缩写,并且是使用streamlit run app.py去运行
 import os
 # 强制禁用 ChromaDB 的遥测系统，防止它调用出问题的库
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
@@ -21,7 +21,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 # 1.页面配置
-st.set_page_config(page_title="CCPC算法教练",page_icon="🤖")
+st.set_page_config(page_title="CCPC算法教练(代码陪练款)",page_icon="🤖",layout="wide")#使用宽屏模式
 
 #加载环境变量
 load_dotenv()
@@ -50,9 +50,25 @@ def init_resource():
 
 db,llm=init_resource()
 
-# 3.网页界面布局
+
+
+
+# 3.增加侧边栏:代码展示栏
+with st.sidebar:
+    st.title("代码工作台")
+    st.markdown("将你的代码贴在这里，教练会结合资料为你审计。")
+    user_code=st.text_area("C++/Python 代码:", height=400, placeholder="在此粘贴你的代码...")
+
+    st.divider()#生成了一条分割线
+
+    k_value=st.slider("检索深度（k）",1,10,5)#范围为1~10，初始值设为5
+    if st.button("清空所有对话"):
+        st.session_state.messages = []
+        st.rerun()#增加一个清空功能
+
+# 4.主界面
 st.title("🤖 CCPC 算法智能教练")
-st.caption("基于 OI-Wiki 知识库的专业算法指导")
+st.caption("基于 OI-Wiki 知识库的专业算法指导与代码审计")
 
 # 如果没有历史消息，初始化
 if "messages" not in st.session_state:#短期记忆保险箱，防止某些数据被删除
@@ -63,38 +79,47 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):#在streamlit里面，with代表了一个视觉上的容器,所有的东西都放进来一个聊天框
         st.markdown(message["content"])#专门处理了markdown文件，使得在网页上显示得漂亮
 
-# 4.聊天逻辑
-if prompt:=st.chat_input("请问关于算法的问题（如：什么是并查集）"):
+# 5.重点修改逻辑，用户既可以提问，也可以提交代码进行审计
+if prompt:=st.chat_input("请向教练提问，或者在左侧贴入代码后在此发送：请审计我的代码"):
     # 将用户输入放到历史
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     # RAG流程
-    with st.spinner("教练真正翻阅资料..."):
+    with st.spinner("教练正在翻阅资料..."):
         #A 检索
-        docs = db.similarity_search(prompt, k=5)
+        # 增加有代码的情况
+        search_query=f"{prompt}{user_code[:100]}"
+        docs = db.similarity_search(search_query, k=k_value)
         context_text = "\n\n---\n\n".join([doc.page_content for doc in docs])
 
         # B. 构造提示词（针对重复问题进行了优化）
         template = """
-        你是一个严谨的 CCPC 算法竞赛教练。
-        请根据以下参考资料回答问题。
+        你是一个顶级的 CCPC 竞赛教练。
+        你手头有一份来自 OI-Wiki 的专业参考资料。
 
-        ### 要求：
-        1. 必须优先使用资料中的内容。
-        2. **禁止重复**：如果资料中有重合的内容，请合并总结，不要机械重复。
-        3. **格式化**：使用清晰的标题和点句符。数学公式请使用 LaTeX 格式。
-        4. 如果资料没写，就说不知道。
-
+        ###任务要求
+        1. **对比分析**：如果用户提供了代码，请对比资料库中的标准算法，检查其逻辑是否正确。
+        2. **潜在风险提示**：
+           - 检查是否有 `int` 溢出（如：$10^{{18}}$ 是否用了 `long long`）？
+           - 检查数组大小（如：双向边是否开了 2 倍空间）？
+           - 检查时间复杂度（如：Dijkstra 必须用优先队列优化吗）？
+        3. **启发式回复**：不要直接重写全部代码，通过提问或指出错误行来引导用户。
+        
         ### 参考资料：
         {context}
 
-        ### 用户问题：
+        ### 用户提问：
         {question}
+
+        ### 用户当前代码：
+        ```cpp
+        {code}
+        ```
         """
         prompt_tpl = ChatPromptTemplate.from_template(template)
-        full_prompt = prompt_tpl.format(context=context_text, question=prompt)
+        full_prompt = prompt_tpl.format(context=context_text,question=search_query,code=user_code)
 
         # C 调用LLM并流式显示答案
         with st.chat_message("assistant"):
@@ -103,9 +128,13 @@ if prompt:=st.chat_input("请问关于算法的问题（如：什么是并查集
             st.markdown(answer)
              # 这里的 st.expander 可以展示“信源”，点击可看
             with st.expander("查看参考资料来源"):
-                for i, doc in enumerate(docs):
-                    st.write(f"来源 {i+1}: {doc.metadata.get('source')}")
-
+                if docs:
+                    for i, doc in enumerate(docs):
+                    # 注意：这里是 doc (单数)，对应 enumerate 出来的变量
+                        source_name = doc.metadata.get('source', '未知来源')
+                        st.write(f"排名 {i+1} 的相关文档: {source_name}")
+                else:
+                    st.write("未找到匹配的参考资料")
     # 将助手回答加入历史
     st.session_state.messages.append({"role": "assistant", "content": answer})
     
