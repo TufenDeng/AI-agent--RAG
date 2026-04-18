@@ -80,11 +80,21 @@ for message in st.session_state.messages:
         st.markdown(message["content"])#专门处理了markdown文件，使得在网页上显示得漂亮
 
 # 5.重点修改逻辑，用户既可以提问，也可以提交代码进行审计
-if prompt:=st.chat_input("请向教练提问，或者在左侧贴入代码后在此发送：请审计我的代码"):
-    # 将用户输入放到历史
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# 增加”意图识别“的功能
+if prompt:=st.chat_input("提问或是发送“审计”来检查代码"):
+
+    #-----意图判断逻辑-----
+    is_audit_mode = False#用来清楚地告诉ai，啥时候听指令，啥时候自动审计
+    if user_code and (len(prompt) < 5 or any(word in prompt for word in ["审计", "看看", "检查", "代码", "bug", "错"])):#以提示词简短为自动审计的依据
+        is_audit_mode = True
+        display_prompt = f"🔍 正在为您审计左侧代码...\n(指令: {prompt})" if len(prompt) > 1 else "🔍 正在为您自动审计左侧代码..."
+    else:
+        display_prompt = prompt
+
+    # 展示用户意图，将用户输入放到历史
+    st.session_state.messages.append({"role": "user", "content": display_prompt})
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(display_prompt)
 
     # RAG流程
     with st.spinner("教练正在翻阅资料..."):
@@ -94,10 +104,17 @@ if prompt:=st.chat_input("请向教练提问，或者在左侧贴入代码后在
         docs = db.similarity_search(search_query, k=k_value)
         context_text = "\n\n---\n\n".join([doc.page_content for doc in docs])
 
-        # B. 构造提示词（针对重复问题进行了优化）
+        # B. 增加工作模式判定，构造提示词（针对重复问题进行了优化）
         template = """
         你是一个顶级的 CCPC 竞赛教练。
         你手头有一份来自 OI-Wiki 的专业参考资料。
+
+         ### 你的工作模式判定：
+        1. **自动审计模式**：如果用户没有提出具体问题，请根据资料库全方位检查代码的：
+           - 逻辑正确性（算法选型是否正确）
+           - 潜在 Bug（溢出、初始化、边界条件）
+           - 复杂度性能（是否能通过常规竞赛时限）
+        2. **定向解答模式**：如果用户提出了具体问题，请以解决该问题为主，代码审计为辅。
 
         ###任务要求
         1. **对比分析**：如果用户提供了代码，请对比资料库中的标准算法，检查其逻辑是否正确。
@@ -105,7 +122,9 @@ if prompt:=st.chat_input("请向教练提问，或者在左侧贴入代码后在
            - 检查是否有 `int` 溢出（如：$10^{{18}}$ 是否用了 `long long`）？
            - 检查数组大小（如：双向边是否开了 2 倍空间）？
            - 检查时间复杂度（如：Dijkstra 必须用优先队列优化吗）？
-        3. **启发式回复**：不要直接重写全部代码，通过提问或指出错误行来引导用户。
+        3. **启发式回复**：不要直接重写全部代码，通过提问或指出错误行来引导用户
+           - 如果是审计模式，请分条列出 [逻辑]、[风险]、[建议]。
+           - 如果是定向解答，指出问题所在。
         
         ### 参考资料：
         {context}
@@ -119,7 +138,11 @@ if prompt:=st.chat_input("请向教练提问，或者在左侧贴入代码后在
         ```
         """
         prompt_tpl = ChatPromptTemplate.from_template(template)
-        full_prompt = prompt_tpl.format(context=context_text,question=search_query,code=user_code)
+
+        #code_black处理格式
+        formatted_code=f"```cpp\n{user_code}\n```" if user_code else "（未提供代码）"
+
+        full_prompt = prompt_tpl.format(context=context_text,question=search_query,code=formatted_code)
 
         # C 调用LLM并流式显示答案
         with st.chat_message("assistant"):
